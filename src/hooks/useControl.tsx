@@ -9,7 +9,17 @@ import {
   type ReactNode,
 } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { AppConfig, ApiResponse, Bootstrap, MediaAction, PowerAction, SystemInfo } from '../types';
+import type {
+  AppConfig,
+  ApiResponse,
+  Bootstrap,
+  MediaAction,
+  MouseButton,
+  PowerAction,
+  ScrollInfo,
+  SystemInfo,
+  TextInputStatus,
+} from '../types';
 
 export type ConfigPatch = Partial<AppConfig> & { regenerateToken?: boolean };
 
@@ -18,6 +28,7 @@ interface ControlValue {
   config: AppConfig | null;
   connected: boolean;
   error: string | null;
+  configError: string | null;
   apiBase: string;
   refresh: () => Promise<void>;
   refreshConfig: () => Promise<void>;
@@ -26,6 +37,14 @@ interface ControlValue {
   setBrightness: (value: number) => Promise<void>;
   media: (action: MediaAction) => Promise<void>;
   powerAction: (action: PowerAction) => Promise<void>;
+  mouseMove: (dx: number, dy: number) => Promise<void>;
+  mouseClick: (button?: MouseButton) => Promise<void>;
+  mouseButton: (button: MouseButton, down: boolean) => Promise<void>;
+  mouseScroll: (dx: number, dy: number) => Promise<void>;
+  getScrollInfo: () => Promise<ScrollInfo | null>;
+  mouseScrollTo: (axis: 'vertical' | 'horizontal', percent: number) => Promise<void>;
+  focusedTextInput: () => Promise<TextInputStatus | null>;
+  typeText: (text: string) => Promise<void>;
   saveConfig: (patch: ConfigPatch) => Promise<AppConfig>;
 }
 
@@ -40,6 +59,7 @@ export function ControlProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
   const [apiBase, setApiBase] = useState('http://127.0.0.1:7456');
 
   const tokenRef = useRef('');
@@ -61,8 +81,10 @@ export function ControlProvider({ children }: { children: ReactNode }) {
 
   const api = useCallback(
     async <T,>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> => {
-      const headers: Record<string, string> = { 'content-type': 'application/json' };
-      if (tokenRef.current) headers['x-auth-token'] = tokenRef.current;
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        'x-auth-token': tokenRef.current,
+      };
       const res = await fetch(`${apiBase}/api${path}`, {
         method: opts.method ?? 'GET',
         headers,
@@ -88,16 +110,19 @@ export function ControlProvider({ children }: { children: ReactNode }) {
   const refreshConfig = useCallback(async () => {
     try {
       setConfig(await api<AppConfig>('/config'));
-    } catch {
-      // La configuración no es crítica para el panel.
+      setConfigError(null);
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : String(e));
     }
   }, [api]);
 
   useEffect(() => {
     let disposed = false;
+    let id: ReturnType<typeof setInterval> | undefined;
     void loadBootstrap().then(() => {
       if (disposed) return;
       const tick = async () => {
+        void refreshConfig();
         try {
           const res = await fetch(`${apiBase}/api/health`);
           if (!res.ok) throw new Error('health');
@@ -108,15 +133,13 @@ export function ControlProvider({ children }: { children: ReactNode }) {
         }
       };
       void tick();
-      const id = setInterval(tick, 5000);
-      return () => {
-        clearInterval(id);
-      };
+      id = setInterval(tick, 5000);
     });
     return () => {
       disposed = true;
+      if (id !== undefined) clearInterval(id);
     };
-  }, [apiBase, loadBootstrap, refresh]);
+  }, [apiBase, loadBootstrap, refresh, refreshConfig]);
 
   const setVolume = useCallback(
     async (value: number) => {
@@ -181,6 +204,84 @@ export function ControlProvider({ children }: { children: ReactNode }) {
     [api],
   );
 
+  const mouseMove = useCallback(async (dx: number, dy: number) => {
+    await api('/mouse/move', { method: 'POST', body: { dx, dy } });
+  }, [api]);
+
+  const mouseClick = useCallback(
+    async (button: MouseButton = 'left') => {
+      try {
+        await api('/mouse/click', { method: 'POST', body: { button } });
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [api],
+  );
+
+  const mouseButton = useCallback(
+    async (button: MouseButton, down: boolean) => {
+      try {
+        await api('/mouse/button', { method: 'POST', body: { button, down } });
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [api],
+  );
+
+  const mouseScroll = useCallback(
+    async (dx: number, dy: number) => {
+      try {
+        await api('/mouse/scroll', { method: 'POST', body: { dx, dy } });
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [api],
+  );
+
+  const getScrollInfo = useCallback(async () => {
+    try {
+      const info = await api<ScrollInfo>('/mouse/scroll-info');
+      setError(null);
+      return info;
+    } catch {
+      return null;
+    }
+  }, [api]);
+
+  const focusedTextInput = useCallback(async () => {
+    try {
+      return await api<TextInputStatus>('/keyboard/focused-text-input');
+    } catch {
+      return null;
+    }
+  }, [api]);
+
+  const typeText = useCallback(
+    async (text: string) => {
+      await api('/keyboard/type', { method: 'POST', body: { text } });
+    },
+    [api],
+  );
+
+  const mouseScrollTo = useCallback(
+    async (axis: 'vertical' | 'horizontal', percent: number) => {
+      const p = Math.round(Math.max(0, Math.min(100, percent)));
+      try {
+        await api('/mouse/scroll-to', { method: 'POST', body: { axis, percent: p } });
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [api],
+  );
+
   const saveConfig = useCallback(
     async (patch: ConfigPatch) => {
       const next = await api<AppConfig>('/config', { method: 'PUT', body: patch });
@@ -197,6 +298,7 @@ export function ControlProvider({ children }: { children: ReactNode }) {
       config,
       connected,
       error,
+      configError,
       apiBase,
       refresh,
       refreshConfig,
@@ -205,6 +307,14 @@ export function ControlProvider({ children }: { children: ReactNode }) {
       setBrightness,
       media,
       powerAction,
+      mouseMove,
+      mouseClick,
+      mouseButton,
+      mouseScroll,
+      getScrollInfo,
+      mouseScrollTo,
+      focusedTextInput,
+      typeText,
       saveConfig,
     }),
     [
@@ -212,6 +322,7 @@ export function ControlProvider({ children }: { children: ReactNode }) {
       config,
       connected,
       error,
+      configError,
       apiBase,
       refresh,
       refreshConfig,
@@ -220,6 +331,14 @@ export function ControlProvider({ children }: { children: ReactNode }) {
       setBrightness,
       media,
       powerAction,
+      mouseMove,
+      mouseClick,
+      mouseButton,
+      mouseScroll,
+      getScrollInfo,
+      mouseScrollTo,
+      focusedTextInput,
+      typeText,
       saveConfig,
     ],
   );

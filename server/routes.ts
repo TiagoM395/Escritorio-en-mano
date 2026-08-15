@@ -10,7 +10,7 @@ interface RouterDeps {
 function isAuthorized(req: Request, token: string): boolean {
   const header = req.header('x-auth-token');
   const query = typeof req.query.token === 'string' ? req.query.token : undefined;
-  return (header ?? query) === token;
+  return (header ?? query ?? '') === token;
 }
 
 function deny(res: Response): void {
@@ -132,6 +132,94 @@ export function createRouter(deps: RouterDeps): Router {
         return res.status(400).json({ ok: false, error: 'action debe ser next, prev o play_pause' });
       }
       return callRust('media', action).then((r) => res.status(r.ok ? 200 : 502).json(r));
+    }),
+  );
+
+  // ── Mouse ──────────────────────────────────────────────────
+  router.post(
+    '/mouse/move',
+    auth((req, res) => {
+      const dx = Math.round(Number(req.body?.dx ?? 0));
+      const dy = Math.round(Number(req.body?.dy ?? 0));
+      if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+        return res.status(400).json({ ok: false, error: 'dx y dy deben ser números' });
+      }
+      return callRust('mouse_move', { dx, dy }).then((r) => res.status(r.ok ? 200 : 502).json(r));
+    }),
+  );
+
+  router.post(
+    '/mouse/click',
+    auth((req, res) => {
+      const button = String(req.body?.button ?? 'left');
+      if (!['left', 'right', 'middle'].includes(button)) {
+        return res.status(400).json({ ok: false, error: 'button debe ser left, right o middle' });
+      }
+      return callRust('mouse_click', button).then((r) => res.status(r.ok ? 200 : 502).json(r));
+    }),
+  );
+
+  router.post(
+    '/mouse/button',
+    auth((req, res) => {
+      const button = String(req.body?.button ?? 'left');
+      const down = Boolean(req.body?.down);
+      if (!['left', 'right', 'middle'].includes(button)) {
+        return res.status(400).json({ ok: false, error: 'button debe ser left, right o middle' });
+      }
+      return callRust('mouse_button', { button, down }).then((r) =>
+        res.status(r.ok ? 200 : 502).json(r),
+      );
+    }),
+  );
+
+  router.post(
+    '/mouse/scroll',
+    auth((req, res) => {
+      const dx = Math.round(Number(req.body?.dx ?? 0));
+      const dy = Math.round(Number(req.body?.dy ?? 0));
+      if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+        return res.status(400).json({ ok: false, error: 'dx y dy deben ser números' });
+      }
+      return callRust('mouse_scroll', { dx, dy }).then((r) => res.status(r.ok ? 200 : 502).json(r));
+    }),
+  );
+
+  router.get(
+    '/mouse/scroll-info',
+    auth((_req, res) => callRust('scroll_info').then((r) => res.status(r.ok ? 200 : 502).json(r))),
+  );
+
+  router.post(
+    '/mouse/scroll-to',
+    auth((req, res) => {
+      const axis = String(req.body?.axis ?? 'vertical');
+      const percent = Number(req.body?.percent);
+      if (!['vertical', 'horizontal'].includes(axis) || !Number.isFinite(percent) || percent < 0 || percent > 100) {
+        return res
+          .status(400)
+          .json({ ok: false, error: 'axis debe ser vertical u horizontal y percent entre 0 y 100' });
+      }
+      return callRust('scroll_to', { axis, percent }).then((r) => res.status(r.ok ? 200 : 502).json(r));
+    }),
+  );
+
+  // ── Teclado ──────────────────────────────────────────────
+  router.get(
+    '/keyboard/focused-text-input',
+    auth((_req, res) =>
+      callRust('focused_text_input').then((r) => res.status(r.ok ? 200 : 502).json(r)),
+    ),
+  );
+
+  router.post(
+    '/keyboard/type',
+    auth((req, res) => {
+      const text = String(req.body?.text ?? '');
+      if (text.length > 10000) {
+        return res.status(400).json({ ok: false, error: 'text demasiado largo' });
+      }
+      return callRust('type_text', text).then((r) => res.status(r.ok ? 200 : 502).json(r));
     }),
   );
 

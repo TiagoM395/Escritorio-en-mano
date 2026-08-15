@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useControl } from '../../hooks/useControl';
 import ModalConfirm from '../ui/ModalConfirm';
 import { Icon } from '../ui/Icon';
+import type { ConnectionMode } from '../../types';
 
 function Switch({
   checked,
@@ -35,7 +36,7 @@ function Switch({
 }
 
 export default function ConfigView() {
-  const { config, system, saveConfig, connected } = useControl();
+  const { config, system, saveConfig, refresh, connected, configError } = useControl();
   const [port, setPort] = useState('7456');
   const [showToken, setShowToken] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -50,7 +51,14 @@ export default function ConfigView() {
   if (!config) {
     return (
       <div className="glass-card mx-auto max-w-2xl p-8 text-center text-sm text-white/50">
-        Cargando configuración…
+        {configError ? (
+          <div className="flex flex-col items-center gap-3">
+            <span className="text-red-300">No se pudo cargar la configuración</span>
+            <code className="rounded-lg bg-white/5 px-3 py-1.5 font-mono text-xs text-white/60">{configError}</code>
+          </div>
+        ) : (
+          'Cargando configuración…'
+        )}
       </div>
     );
   }
@@ -89,6 +97,19 @@ export default function ConfigView() {
     }
   };
 
+  const setConnectionMode = async (mode: ConnectionMode) => {
+    if (config.app.connectionMode === mode) return;
+    setSaving(true);
+    try {
+      await saveConfig({ app: { ...config.app, connectionMode: mode } });
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const connectionMode = config.app.connectionMode ?? 'wifi';
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8">
       <section>
@@ -112,7 +133,9 @@ export default function ConfigView() {
             </div>
             <p className="text-xs text-white/40">
               {connectionUrl
-                ? 'Abrila desde el navegador del teléfono, en la misma red Wi-Fi.'
+                ? connectionMode === 'vpn' && system?.vpnIp
+                  ? 'Abrila desde el navegador del teléfono (con Tailscale activo en ambos dispositivos).'
+                  : 'Abrila desde el navegador del teléfono, en la misma red Wi-Fi.'
                 : 'Esperando datos del servidor…'}
             </p>
           </div>
@@ -152,6 +175,53 @@ export default function ConfigView() {
               Al regenerar, la URL cambia. Copiá la nueva en tus dispositivos.
             </p>
           </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/40">Modo de conexión</h2>
+        <div className="glass-card flex flex-col gap-4 p-5">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => void setConnectionMode('wifi')}
+              disabled={!connected || saving}
+              className={`flex flex-col items-start gap-1 rounded-xl p-4 text-left ring-1 transition-colors disabled:opacity-40 ${
+                connectionMode === 'wifi'
+                  ? 'bg-cyan-400/15 ring-cyan-300/40'
+                  : 'bg-white/5 ring-white/10 hover:bg-white/10'
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold text-white/85">
+                <Icon name="wifi" className="h-4 w-4" />
+                Wi-Fi
+              </span>
+              <span className="font-mono text-[11px] text-white/50">{system?.ip || '—'}</span>
+              <span className="text-[11px] text-white/40">Teléfono y PC en la misma red</span>
+            </button>
+            <button
+              onClick={() => void setConnectionMode('vpn')}
+              disabled={!connected || saving}
+              className={`flex flex-col items-start gap-1 rounded-xl p-4 text-left ring-1 transition-colors disabled:opacity-40 ${
+                connectionMode === 'vpn'
+                  ? 'bg-cyan-400/15 ring-cyan-300/40'
+                  : 'bg-white/5 ring-white/10 hover:bg-white/10'
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold text-white/85">
+                <Icon name="shield" className="h-4 w-4" />
+                VPN (Tailscale)
+              </span>
+              <span className="font-mono text-[11px] text-white/50">{system?.vpnIp || 'No detectada'}</span>
+              <span className="text-[11px] text-white/40">Túnel directo, menor latencia</span>
+            </button>
+          </div>
+          <p className="text-xs text-white/40">
+            {connectionMode === 'vpn' && !system?.vpnIp
+              ? 'No se detectó el adaptador Tailscale. Instalá y conectá Tailscale en la PC antes de elegir esta opción.'
+              : connectionMode === 'vpn'
+                ? 'Instalá Tailscale también en el teléfono para acceder por el túnel. El QR y la URL usan la IP de la VPN.'
+                : 'El teléfono debe estar en la misma red local que esta PC.'}
+          </p>
         </div>
       </section>
 

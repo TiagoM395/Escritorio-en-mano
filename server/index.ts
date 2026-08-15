@@ -14,7 +14,7 @@ function defaultConfig(): AppConfig {
     server: { host: '0.0.0.0', port: 7456, rustApiPort: 7457 },
     token: '',
     rustSecret: '',
-    app: { autoStart: false, minimizeToTray: true, lanIp: '' },
+    app: { autoStart: false, minimizeToTray: true, lanIp: '', connectionMode: 'wifi' },
   };
 }
 
@@ -51,12 +51,22 @@ function loadConfig(): AppConfig {
 function getLanIp(): string {
   if (process.env.LAN_IP && process.env.LAN_IP.trim()) return process.env.LAN_IP.trim();
   const ifaces = os.networkInterfaces();
+  const isLanName = (name: string) => /wi-?fi|ethernet|lan|wlan/i.test(name);
+  const isVirtualName = (name: string) => /tailscale|virtual|vmware|virtualbox|hyper|loopback|bluetooth/i.test(name);
+  const inCgnat = (a: string) => a.startsWith('100.64.') || a.startsWith('100.65.') || a.startsWith('100.127.');
+  const candidates: string[] = [];
+  let fallback: string | null = null;
   for (const name of Object.keys(ifaces)) {
     for (const net of ifaces[name] ?? []) {
-      if (net.family === 'IPv4' && !net.internal) return net.address;
+      if (net.family !== 'IPv4' || net.internal) continue;
+      const addr = net.address;
+      if (addr.startsWith('127.') || addr.startsWith('169.254.')) continue;
+      if (isVirtualName(name) || inCgnat(addr)) continue;
+      if (isLanName(name)) candidates.push(addr);
+      else if (fallback === null) fallback = addr;
     }
   }
-  return '127.0.0.1';
+  return candidates[0] ?? fallback ?? '127.0.0.1';
 }
 
 const config = loadConfig();
@@ -69,7 +79,7 @@ app.use(express.json({ limit: '32kb' }));
 app.use('/api', createRouter({ config, rustBase, getLanIp }));
 
 // Servir el frontend compilado (producción / teléfono)
-const distDir = path.resolve(process.cwd(), 'dist');
+const distDir = path.resolve(__dirname, '..', '..', 'dist');
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get('*', (_req, res) => {

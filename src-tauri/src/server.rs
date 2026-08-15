@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Response, Server};
 
 use crate::config::{self, AppConfig};
-use crate::{system, winapi};
+use crate::{system, uia, winapi};
 
 type Shared = Arc<Mutex<AppConfig>>;
 
-fn respond(request: &mut tiny_http::Request, status: u16, body: String) {
+fn respond(request: tiny_http::Request, status: u16, body: String) {
     let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap_or_else(|_| {
         Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap()
     });
@@ -30,8 +30,8 @@ fn authorized(request: &tiny_http::Request, secret: &str) -> bool {
         .any(|h| h.field.equiv("x-shared-secret") && h.value.as_str() == secret)
 }
 
-fn handle_control(request: &mut tiny_http::Request, state: &Shared) {
-    let body = read_body(request);
+fn handle_control(mut request: tiny_http::Request, state: &Shared) {
+    let body = read_body(&mut request);
     let payload: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(_) => {
@@ -64,6 +64,52 @@ fn handle_control(request: &mut tiny_http::Request, state: &Shared) {
             let a = value.and_then(|x| x.as_str()).unwrap_or("");
             winapi::media(a).map(|_| serde_json::json!({ "sent": true }))
         }
+        "mouse_move" => {
+            let dx = value
+                .and_then(|v| v.get("dx").and_then(|x| x.as_i64()))
+                .unwrap_or(0) as i32;
+            let dy = value
+                .and_then(|v| v.get("dy").and_then(|x| x.as_i64()))
+                .unwrap_or(0) as i32;
+            winapi::mouse_move(dx, dy).map(|_| serde_json::json!({ "done": true }))
+        }
+        "mouse_click" => {
+            let button = value.and_then(|x| x.as_str()).unwrap_or("left");
+            winapi::mouse_click(button).map(|_| serde_json::json!({ "done": true }))
+        }
+        "mouse_button" => {
+            let button = value
+                .and_then(|v| v.get("button").and_then(|x| x.as_str()))
+                .unwrap_or("left");
+            let down = value
+                .and_then(|v| v.get("down").and_then(|x| x.as_bool()))
+                .unwrap_or(false);
+            winapi::mouse_button(button, down).map(|_| serde_json::json!({ "done": true }))
+        }
+        "mouse_scroll" => {
+            let dx = value
+                .and_then(|v| v.get("dx").and_then(|x| x.as_i64()))
+                .unwrap_or(0) as i32;
+            let dy = value
+                .and_then(|v| v.get("dy").and_then(|x| x.as_i64()))
+                .unwrap_or(0) as i32;
+            winapi::mouse_scroll(dx, dy).map(|_| serde_json::json!({ "done": true }))
+        }
+        "cursor_pos" => winapi::cursor_pos().map(|(x, y)| serde_json::json!({ "x": x, "y": y })),
+        "scroll_info" => uia::scroll_info(),
+        "scroll_to" => {
+            let axis = value.and_then(|v| v.get("axis").and_then(|x| x.as_str())).unwrap_or("vertical");
+            let percent = value
+                .and_then(|v| v.get("percent").and_then(|x| x.as_f64()))
+                .unwrap_or(0.0);
+            uia::scroll_to(axis, percent).map(|_| serde_json::json!({ "done": true }))
+        }
+        "focused_text_input" => uia::focused_is_text_input()
+            .map(|(active, window)| serde_json::json!({ "active": active, "window": window })),
+        "type_text" => {
+            let text = value.and_then(|x| x.as_str()).unwrap_or("");
+            winapi::type_text(text).map(|_| serde_json::json!({ "done": true }))
+        }
         "lock" => winapi::lock().map(|_| serde_json::json!({ "done": true })),
         "sleep" => winapi::sleep().map(|_| serde_json::json!({ "done": true })),
         "shutdown" => winapi::shutdown().map(|_| serde_json::json!({ "done": true })),
@@ -90,7 +136,8 @@ fn handle_control(request: &mut tiny_http::Request, state: &Shared) {
 fn system_info(state: &Shared) -> serde_json::Value {
     let cfg = state.lock().unwrap().clone();
     let (total_mb, free_mb) = system::memory_mb();
-    let ip = system::lan_ip();
+    let ip = config::connection_ip(&cfg);
+    let vpn_ip = system::vpn_ip();
     let volume = winapi::get_volume().map(|v| (v * 100.0).round() as i64).unwrap_or(0);
     let muted = winapi::get_mute().unwrap_or(false);
     let brightness = winapi::get_brightness().unwrap_or(None);
@@ -100,6 +147,7 @@ fn system_info(state: &Shared) -> serde_json::Value {
         "ramTotalMb": total_mb,
         "ramFreeMb": free_mb,
         "ip": ip,
+        "vpnIp": vpn_ip,
         "port": cfg.server.port,
         "url": format!("http://{}:{}", ip, cfg.server.port),
         "volume": volume,
@@ -109,7 +157,7 @@ fn system_info(state: &Shared) -> serde_json::Value {
     })
 }
 
-fn handle_config_get(request: &mut tiny_http::Request, state: &Shared) {
+fn handle_config_get(request: tiny_http::Request, state: &Shared) {
     let cfg = state.lock().unwrap().clone();
     respond(
         request,
@@ -118,8 +166,8 @@ fn handle_config_get(request: &mut tiny_http::Request, state: &Shared) {
     );
 }
 
-fn handle_config_post(request: &mut tiny_http::Request, state: &Shared, handle: &tauri::AppHandle) {
-    let body = read_body(request);
+fn handle_config_post(mut request: tiny_http::Request, state: &Shared, handle: &tauri::AppHandle) {
+    let body = read_body(&mut request);
     let patch: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(_) => {
@@ -168,6 +216,11 @@ fn handle_config_post(request: &mut tiny_http::Request, state: &Shared, handle: 
         if let Some(ip) = app.get("lanIp").and_then(|v| v.as_str()) {
             cfg.app.lan_ip = ip.to_string();
         }
+        if let Some(mode) = app.get("connectionMode").and_then(|v| v.as_str()) {
+            if mode == "wifi" || mode == "vpn" {
+                cfg.app.connection_mode = mode.to_string();
+            }
+        }
     }
 
     if let Err(e) = config::save(&cfg) {
@@ -206,21 +259,23 @@ pub fn start_http_server(state: Shared, handle: tauri::AppHandle) -> Result<(), 
     })?;
     println!("[rust] API nativa escuchando en http://127.0.0.1:{port}");
 
-    for mut request in server.incoming_requests() {
+    for request in server.incoming_requests() {
         let state = state.clone();
         let handle = handle.clone();
         std::thread::spawn(move || {
             let secret = state.lock().unwrap().rust_secret.clone();
             if !authorized(&request, &secret) {
-                respond(&mut request, 401, r#"{"ok":false,"error":"secreto inválido"}"#.into());
+                respond(request, 401, r#"{"ok":false,"error":"secreto inválido"}"#.into());
                 return;
             }
-            match (request.method().as_str(), request.url()) {
-                ("POST", "/control") => handle_control(&mut request, &state),
-                ("GET", "/config") => handle_config_get(&mut request, &state),
-                ("POST", "/config") => handle_config_post(&mut request, &state, &handle),
+            let method = request.method().as_str().to_string();
+            let url = request.url().to_string();
+            match (method.as_str(), url.as_str()) {
+                ("POST", "/control") => handle_control(request, &state),
+                ("GET", "/config") => handle_config_get(request, &state),
+                ("POST", "/config") => handle_config_post(request, &state, &handle),
                 _ => respond(
-                    &mut request,
+                    request,
                     404,
                     serde_json::json!({ "ok": false, "error": "no encontrado" }).to_string(),
                 ),

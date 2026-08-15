@@ -5,6 +5,7 @@ import ActionCard from '../ui/ActionCard';
 import ModalConfirm from '../ui/ModalConfirm';
 import SliderVolume from '../ui/SliderVolume';
 import { Icon, type IconName } from '../ui/Icon';
+import Trackpad from '../Trackpad';
 
 interface ConfirmMeta {
   title: string;
@@ -55,8 +56,10 @@ function fmtMb(mb: number): string {
 }
 
 export default function PanelView() {
-  const { system, connected, setVolume, toggleMute, setBrightness, media, powerAction, refresh } = useControl();
+  const { system, connected, setVolume, toggleMute, setBrightness, media, powerAction, refresh } =
+    useControl();
   const [confirm, setConfirm] = useState<PowerAction | null>(null);
+  const [trackpadOpen, setTrackpadOpen] = useState(false);
 
   const stats: { icon: IconName; label: string; value: string }[] = [
     { icon: 'cpu', label: 'Procesador', value: system?.cpu ?? '—' },
@@ -178,6 +181,20 @@ export default function PanelView() {
         </div>
       </section>
 
+      {/* Control remoto */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/40">Control remoto</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <ActionCard
+            icon="mouse"
+            title="Trackpad"
+            subtitle="Mouse + teclado"
+            onClick={() => setTrackpadOpen(true)}
+            disabled={!connected}
+          />
+        </div>
+      </section>
+
       {/* Energía */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/40">Energía</h2>
@@ -200,6 +217,8 @@ export default function PanelView() {
         onConfirm={handleConfirm}
         onClose={() => setConfirm(null)}
       />
+
+      {trackpadOpen && <Trackpad onClose={() => setTrackpadOpen(false)} />}
     </div>
   );
 }

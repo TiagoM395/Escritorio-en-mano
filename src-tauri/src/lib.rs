@@ -1,6 +1,7 @@
 mod config;
 mod server;
 mod system;
+mod uia;
 mod winapi;
 
 use std::sync::{Arc, Mutex};
@@ -17,7 +18,7 @@ fn get_bootstrap(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let state = app.state::<Arc<Mutex<AppConfig>>>();
     let cfg = state.lock().unwrap().clone();
     Ok(serde_json::json!({
-        "apiBase": format!("http://{}:{}", system::lan_ip(), cfg.server.port),
+        "apiBase": format!("http://{}:{}", config::connection_ip(&cfg), cfg.server.port),
         "token": cfg.token,
     }))
 }
@@ -59,21 +60,43 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn spawn_node_server() {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let script = cwd.join("server").join("dist").join("index.js");
-    if !script.exists() {
-        eprintln!("[rust] No se encontró el servidor Node en {script:?}; no se iniciará.");
-        return;
+fn find_node_server() -> Option<std::path::PathBuf> {
+    let mut dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    loop {
+        let candidate = dir.join("server").join("dist").join("index.js");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            break;
+        }
     }
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join("server").join("dist").join("index.js");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn spawn_node_server(state: &Arc<Mutex<AppConfig>>) {
+    let Some(script) = find_node_server() else {
+        eprintln!("[rust] No se encontró el servidor Node; no se iniciará.");
+        return;
+    };
+    let cfg = state.lock().unwrap().clone();
     use std::os::windows::process::CommandExt;
     let child = std::process::Command::new("node")
         .arg(&script)
-        .current_dir(&cwd)
+        .env("RUST_SECRET", &cfg.rust_secret)
+        .env("APP_TOKEN", &cfg.token)
+        .env("SERVER_PORT", cfg.server.port.to_string())
+        .env("RUST_API_URL", format!("http://127.0.0.1:{}", cfg.server.rust_api_port))
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .spawn();
     match child {
-        Ok(_) => println!("[rust] Servidor Node iniciado (PID en ejecución)."),
+        Ok(_) => println!("[rust] Servidor Node iniciado ({script:?})."),
         Err(e) => eprintln!("[rust] No se pudo iniciar el servidor Node: {e}"),
     }
 }
@@ -93,12 +116,11 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .manage(shared.clone())
         .setup(move |app| {
-            if let Ok(manager) = app.autolaunch() {
-                let cfg = shared.lock().unwrap().clone();
-                let enabled = manager.is_enabled().unwrap_or(false);
-                if cfg.app.auto_start && !enabled {
-                    let _ = manager.enable();
-                }
+            let manager = app.autolaunch();
+            let cfg = shared.lock().unwrap().clone();
+            let enabled = manager.is_enabled().unwrap_or(false);
+            if cfg.app.auto_start && !enabled {
+                let _ = manager.enable();
             }
 
             let state = shared.clone();
@@ -107,7 +129,7 @@ pub fn run() {
                 let _ = server::start_http_server(state, handle);
             });
 
-            spawn_node_server();
+            spawn_node_server(&shared);
             setup_tray(app.handle())?;
             Ok(())
         })

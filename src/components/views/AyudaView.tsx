@@ -8,8 +8,8 @@ const steps = [
     text: 'Ejecutá “Escritorio en Mano”. Verás el ícono en la bandeja del sistema y la ventana del panel.',
   },
   {
-    title: 'Conectá el teléfono a la misma red',
-    text: 'El teléfono y la PC deben estar en la misma red Wi-Fi o LAN.',
+    title: 'Conectá el teléfono',
+    text: 'Los dos deben estar en la misma red Wi-Fi o LAN. Si preferís un túnel directo, activá el modo VPN (Tailscale) en Configuración.',
   },
   {
     title: 'Escanéá el código QR',
@@ -83,7 +83,7 @@ export default function AyudaView() {
           <li className="flex gap-3">
             <Icon name="wifi" className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
             <span>
-              <strong className="text-white/85">No abre desde el teléfono:</strong> verificá que ambos estén en la misma red y que el firewall de Windows permita Node.js (aceptá el aviso al primer inicio).
+              <strong className="text-white/85">No abre desde el teléfono:</strong> verificá que ambos estén en la misma red y que el firewall de Windows permita Node.js (aceptá el aviso al primer inicio). Si el router aísla dispositivos, probá el modo VPN (Tailscale).
             </span>
           </li>
           <li className="flex gap-3">

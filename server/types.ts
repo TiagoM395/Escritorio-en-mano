@@ -11,11 +11,22 @@ export type ControlAction =
   | 'restart'
   | 'display_off'
   | 'media'
+  | 'mouse_move'
+  | 'mouse_click'
+  | 'mouse_button'
+  | 'mouse_scroll'
+  | 'cursor_pos'
+  | 'scroll_info'
+  | 'scroll_to'
+  | 'focused_text_input'
+  | 'type_text'
   | 'system_info';
+
+export type ControlValue = number | boolean | string | Record<string, unknown>;
 
 export interface ControlRequest {
   action: ControlAction;
-  value?: number | boolean | string;
+  value?: ControlValue;
 }
 
 export interface ControlResponse {
@@ -34,6 +45,7 @@ export interface AppPrefs {
   autoStart: boolean;
   minimizeToTray: boolean;
   lanIp?: string;
+  connectionMode?: 'wifi' | 'vpn';
 }
 
 export interface AppConfig {
@@ -49,10 +61,16 @@ export interface SystemInfo {
   ramTotalMb: number;
   ramFreeMb: number;
   ip: string;
+  vpnIp?: string;
   port: number;
   url: string;
   volume: number;
   muted: boolean;
   brightness: number;
   brightnessSupported: boolean;
+}
+
+export interface TextInputStatus {
+  active: boolean;
+  window: string;
 }

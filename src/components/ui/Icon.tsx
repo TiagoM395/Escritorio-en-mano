@@ -27,7 +27,11 @@ export type IconName =
   | 'copy'
   | 'check'
   | 'close'
-  | 'zap';
+  | 'zap'
+  | 'mouse'
+  | 'cursor'
+  | 'drag'
+  | 'send';
 
 const paths: Record<IconName, ReactNode> = {
   hand: (
@@ -198,6 +202,30 @@ const paths: Record<IconName, ReactNode> = {
     </>
   ),
   zap: <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />,
+  mouse: (
+    <>
+      <rect x="6" y="3" width="12" height="18" rx="6" />
+      <path d="M12 7v4" />
+    </>
+  ),
+  cursor: (
+    <>
+      <path d="m4 4 7.2 16.8 2.6-7.4 7.4-2.6L4 4Z" />
+      <path d="M14 10l-1.2 3.8" />
+    </>
+  ),
+  drag: (
+    <>
+      <path d="M12 2v20" />
+      <path d="m5 9 7 7 7-7" />
+    </>
+  ),
+  send: (
+    <>
+      <path d="m22 2-11 11" />
+      <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
+    </>
+  ),
 };
 
 export function Icon({

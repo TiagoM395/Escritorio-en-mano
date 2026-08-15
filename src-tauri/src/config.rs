@@ -20,12 +20,18 @@ impl Default for ServerConfig {
     }
 }
 
+fn default_connection_mode() -> String {
+    "wifi".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppPrefs {
     pub auto_start: bool,
     pub minimize_to_tray: bool,
     pub lan_ip: String,
+    #[serde(default = "default_connection_mode")]
+    pub connection_mode: String,
 }
 
 impl Default for AppPrefs {
@@ -34,6 +40,7 @@ impl Default for AppPrefs {
             auto_start: false,
             minimize_to_tray: true,
             lan_ip: String::new(),
+            connection_mode: "wifi".into(),
         }
     }
 }
@@ -93,15 +100,29 @@ pub fn config_path() -> PathBuf {
 
 pub fn load_or_create() -> AppConfig {
     let path = config_path();
-    if path.exists() {
-    if let Ok(raw) = fs::read_to_string(&path) {
-        let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(&raw);
-        if let Ok(cfg) = serde_json::from_str::<AppConfig>(raw) {
-            return cfg;
+    let mut cfg = if path.exists() {
+        if let Ok(raw) = fs::read_to_string(&path) {
+            let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(&raw);
+            if let Ok(cfg) = serde_json::from_str::<AppConfig>(raw) {
+                cfg
+            } else {
+                AppConfig::default()
+            }
+        } else {
+            AppConfig::default()
         }
+    } else {
+        AppConfig::default()
+    };
+    if cfg.token.is_empty() {
+        cfg.token = random_hex(48);
     }
+    if cfg.rust_secret.is_empty() {
+        cfg.rust_secret = random_hex(48);
     }
-    let cfg = AppConfig::default();
+    if cfg.app.connection_mode != "wifi" && cfg.app.connection_mode != "vpn" {
+        cfg.app.connection_mode = "wifi".into();
+    }
     let _ = save(&cfg);
     cfg
 }
@@ -113,6 +134,18 @@ pub fn save(cfg: &AppConfig) -> Result<(), String> {
     }
     let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+/// IP efectiva según el modo de conexión elegido:
+/// "vpn" usa el túnel Tailscale (si está activo), sino la red local.
+pub fn connection_ip(cfg: &AppConfig) -> String {
+    if cfg.app.connection_mode == "vpn" {
+        let vpn = crate::system::vpn_ip();
+        if !vpn.is_empty() {
+            return vpn;
+        }
+    }
+    crate::system::lan_ip()
 }
 
 /// Vista pública (sin el secreto compartido) que recibe el frontend.
@@ -127,7 +160,8 @@ pub fn public_view(cfg: &AppConfig) -> serde_json::Value {
         "app": {
             "autoStart": cfg.app.auto_start,
             "minimizeToTray": cfg.app.minimize_to_tray,
-            "lanIp": cfg.app.lan_ip
+            "lanIp": cfg.app.lan_ip,
+            "connectionMode": cfg.app.connection_mode
         }
     })
 }

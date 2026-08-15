@@ -32,6 +32,10 @@ src-tauri/gen/schemas/
 
 # Configuración sensible del proyecto (contiene el token de acceso)
 config.json
+src-tauri/config.json
+
+# TypeScript
+*.tsbuildinfo
 
 # Env
 .env
