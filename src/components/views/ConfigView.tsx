@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useControl } from '../../hooks/useControl';
 import ModalConfirm from '../ui/ModalConfirm';
 import { Icon } from '../ui/Icon';
@@ -114,66 +115,80 @@ export default function ConfigView() {
     <div className="mx-auto flex max-w-3xl flex-col gap-8">
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/40">Conexión</h2>
-        <div className="glass-card flex flex-col gap-4 p-5">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-white/40">URL para el teléfono</span>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={connectionUrl || 'Conectando…'}
-                className="token-text flex-1 rounded-xl bg-white/5 px-3 py-2 font-mono text-xs text-white/80 ring-1 ring-white/10 outline-none"
-              />
-              <button
-                onClick={() => void copyText(connectionUrl)}
-                className="rounded-xl bg-white/5 p-2.5 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10"
-                aria-label="Copiar URL"
-              >
-                <Icon name={copied ? 'check' : 'copy'} className="h-4 w-4" />
-              </button>
+        <div className="glass-card flex flex-col gap-5 p-5 md:flex-row">
+          <div className="flex shrink-0 flex-col items-center gap-2">
+            <div className="rounded-2xl bg-white p-3">
+              {connectionUrl ? (
+                <QRCodeSVG value={connectionUrl} size={170} fgColor="#0b1020" bgColor="#ffffff" />
+              ) : (
+                <div className="flex h-[170px] w-[170px] items-center justify-center text-xs text-slate-500">
+                  Cargando…
+                </div>
+              )}
             </div>
-            <p className="text-xs text-white/40">
-              {connectionUrl
-                ? connectionMode === 'vpn' && system?.vpnIp
-                  ? 'Abrila desde el navegador del teléfono (con Tailscale activo en ambos dispositivos).'
-                  : 'Abrila desde el navegador del teléfono, en la misma red Wi-Fi.'
-                : 'Esperando datos del servidor…'}
-            </p>
+            <p className="text-xs text-white/40">Escanéá con la cámara del teléfono</p>
           </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-white/40">URL para el teléfono</span>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={connectionUrl || 'Conectando…'}
+                  className="token-text flex-1 rounded-xl bg-white/5 px-3 py-2 font-mono text-xs text-white/80 ring-1 ring-white/10 outline-none"
+                />
+                <button
+                  onClick={() => void copyText(connectionUrl)}
+                  className="rounded-xl bg-white/5 p-2.5 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10"
+                  aria-label="Copiar URL"
+                >
+                  <Icon name={copied ? 'check' : 'copy'} className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-xs text-white/40">
+                {connectionUrl
+                  ? connectionMode === 'vpn' && system?.vpnIp
+                    ? 'Abrila desde el navegador del teléfono (con Tailscale activo en ambos dispositivos).'
+                    : 'Abrila desde el navegador del teléfono, en la misma red Wi-Fi.'
+                  : 'Esperando datos del servidor…'}
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-white/40">Token de acceso</span>
-            <div className="flex items-center gap-2">
-              <code className="token-text flex-1 rounded-xl bg-white/5 px-3 py-2 font-mono text-xs text-white/80 ring-1 ring-white/10">
-                {showToken ? config.token : '••••••••••••••••••••'}
-              </code>
-              <button
-                onClick={() => setShowToken((v) => !v)}
-                className="rounded-xl bg-white/5 p-2.5 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10"
-                aria-label="Mostrar token"
-              >
-                <Icon name={showToken ? 'close' : 'key'} className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => void copyText(config.token)}
-                className="rounded-xl bg-white/5 p-2.5 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10"
-                aria-label="Copiar token"
-              >
-                <Icon name="copy" className="h-4 w-4" />
-              </button>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-white/40">Token de acceso</span>
+              <div className="flex items-center gap-2">
+                <code className="token-text flex-1 rounded-xl bg-white/5 px-3 py-2 font-mono text-xs text-white/80 ring-1 ring-white/10">
+                  {showToken ? config.token : '••••••••••••••••••••'}
+                </code>
+                <button
+                  onClick={() => setShowToken((v) => !v)}
+                  className="rounded-xl bg-white/5 p-2.5 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10"
+                  aria-label="Mostrar token"
+                >
+                  <Icon name={showToken ? 'close' : 'key'} className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => void copyText(config.token)}
+                  className="rounded-xl bg-white/5 p-2.5 text-white/70 ring-1 ring-white/10 transition-colors hover:bg-white/10"
+                  aria-label="Copiar token"
+                >
+                  <Icon name="copy" className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setRegenerating(true)}
+                  disabled={!connected || saving}
+                  className="rounded-xl bg-amber-400/15 px-3 py-2 text-xs font-semibold text-amber-300 ring-1 ring-amber-300/30 transition-colors hover:bg-amber-400/25 disabled:opacity-40"
+                >
+                  Regenerar token
+                </button>
+                {savedNote && <span className="text-xs text-emerald-300">Guardado ✓</span>}
+              </div>
+              <p className="text-xs text-white/40">
+                Al regenerar, la URL cambia. Copiá la nueva en tus dispositivos.
+              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setRegenerating(true)}
-                disabled={!connected || saving}
-                className="rounded-xl bg-amber-400/15 px-3 py-2 text-xs font-semibold text-amber-300 ring-1 ring-amber-300/30 transition-colors hover:bg-amber-400/25 disabled:opacity-40"
-              >
-                Regenerar token
-              </button>
-              {savedNote && <span className="text-xs text-emerald-300">Guardado ✓</span>}
-            </div>
-            <p className="text-xs text-white/40">
-              Al regenerar, la URL cambia. Copiá la nueva en tus dispositivos.
-            </p>
           </div>
         </div>
       </section>

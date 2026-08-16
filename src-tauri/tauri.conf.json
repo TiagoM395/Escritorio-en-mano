@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.tiagom395.escritorioenmano",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run build:server && npm run dev",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
