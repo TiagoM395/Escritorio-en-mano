@@ -167,21 +167,17 @@ export default function Trackpad({ onClose }: { onClose: () => void }) {
     return () => clearInterval(id);
   }, [mouseScrollTo]);
 
-  // Auto-detectar campo de texto enfocado en la PC: si está activo, abrir el teclado.
+  // Auto-detectar campo de texto enfocado en la PC: solo auto-abre el teclado.
+  // El usuario cierra el teclado manualmente con el botón.
   useEffect(() => {
     let disposed = false;
     const poll = async () => {
       const s = await focusedTextInput();
       if (disposed) return;
-      if (s?.active) {
-        if (manuallyClosed.current) return;
+      if (s?.active && !manuallyClosed.current) {
         setKeyboardOpen(true);
-      } else {
-        manuallyClosed.current = false;
-        setKeyboardOpen(false);
       }
     };
-    void poll();
     const id = setInterval(poll, 1500);
     return () => {
       disposed = true;

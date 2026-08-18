@@ -80,7 +80,7 @@ pub fn get_brightness() -> Result<Option<i32>, String> {
 
 pub fn set_brightness(value: i32) -> Result<(), String> {
     ps(&format!(
-        "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(1,{value})"
+        "(Get-WmiObject -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(1,{value})"
     ))?;
     Ok(())
 }
